@@ -1,66 +1,72 @@
-
 require('dotenv').config();
 const puppeteer = require('puppeteer');
+const cron = require('node-cron');
 
-(async () => {
-  const browser = await puppeteer.launch({ headless: "new", defaultViewport: { width: 1920, height: 1080 } });
+const runCheckIn = async () => {
+  console.log('Starting check-in process...');
+  const browser = await puppeteer.launch({
+    headless: "new",
+    defaultViewport: { width: 1920, height: 1080 },
+    // Required for running in Docker
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
   const page = await browser.newPage();
 
   try {
-    // Navigate to the login page
+    // Navigate and log in
     await page.goto('https://vgbs.luminum.pl/');
-
-    // Log in
     await page.waitForSelector('#lf');
     await page.type('#lf', process.env.LUMINUM_USERNAME);
     await page.type('input[type="password"]', process.env.LUMINUM_PASSWORD);
     await page.click('input[type="submit"]');
-
-    // Wait for navigation to the dashboard
     await page.waitForNavigation();
     await page.screenshot({ path: 'after-login.png', fullPage: true });
+    console.log('Login successful, screenshot saved.');
 
-    // Determine which button to click
+    // Determine which element to click
     const dayOfWeek = new Date().getDay();
-    let buttonText;
+    let elementText;
 
     if (dayOfWeek === 3) { // Wednesday
-      buttonText = 'obecność z biura';
+      elementText = 'Obecność - Biuro';
     } else if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Monday, Tuesday, Thursday, Friday
-      buttonText = 'obecność z domu';
+      elementText = 'Obecność - Dom';
     } else {
       console.log('It is the weekend, no check-in required.');
       await browser.close();
       return;
     }
 
-    await page.screenshot({ path: 'checkin-confirmation.png', fullPage: true });
+    // Find and click the element
+    const xpath = `//div[contains(@class, 'tile-text') and normalize-space(.) = '${elementText}']`;
+    const [element] = await page.$x(xpath);
 
-    // Click the button
-    const buttonSelector = `::-p-text(${buttonText})`;
-    try {
-      const button = await page.waitForSelector(buttonSelector);
-      if (button) {
-        await button.click();
-        console.log(`Successfully clicked "${buttonText}"`);
-      } else {
-        throw new Error(`Button "${buttonText}" not found`);
-      }
-    } catch (e) {
-        throw new Error(`Button "${buttonText}" not found`);
+    if (element) {
+      await element.click();
+      console.log(`Successfully clicked "${elementText}"`);
+    } else {
+      throw new Error(`Element with text "${elementText}" not found`);
     }
 
-    // Wait for a moment to ensure any post-click actions are visible
     await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // Save a screenshot for verification
-    await page.screenshot({ path: 'checkin-confirmation.png' });
-    console.log('Screenshot saved as checkin-confirmation.png');
+    await page.screenshot({ path: 'checkin-confirmation.png', fullPage: true });
+    console.log('Confirmation screenshot saved.');
 
   } catch (error) {
-    console.error('An error occurred:', error);
+    console.error('An error occurred during the check-in process:', error);
     await page.screenshot({ path: 'error.png', fullPage: true });
   } finally {
     await browser.close();
+    console.log('Browser closed.');
   }
-})();
+};
+
+// Schedule the task
+const cronSchedule = process.env.CRON_SCHEDULE;
+if (cron.validate(cronSchedule)) {
+  console.log(`Scheduler started. Waiting for the job to run at: ${cronSchedule}`);
+  cron.schedule(cronSchedule, runCheckIn);
+} else {
+  console.error('Invalid CRON schedule in .env file. Please check CRON_SCHEDULE.');
+  process.exit(1);
+}
