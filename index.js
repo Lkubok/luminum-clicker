@@ -39,13 +39,16 @@ const runCheckIn = async () => {
 
     // Find and click the element
     const xpath = `//div[contains(@class, 'tile-text') and normalize-space(.) = '${elementText}']`;
-    const [element] = await page.$x(xpath);
+    const elementHandle = await page.evaluateHandle((xpath) => {
+        const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+        return result.singleNodeValue;
+    }, xpath);
 
-    if (element) {
-      await element.click();
-      console.log(`Successfully clicked "${elementText}"`);
+    if (elementHandle && (await elementHandle.asElement())) {
+        await elementHandle.asElement().click();
+        console.log(`Successfully clicked "${elementText}"`);
     } else {
-      throw new Error(`Element with text "${elementText}" not found`);
+        throw new Error(`Element with text "${elementText}" not found`);
     }
 
     await new Promise(resolve => setTimeout(resolve, 2000));
