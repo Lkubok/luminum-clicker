@@ -61,12 +61,17 @@ const runCheckIn = async () => {
   }
 };
 
-// Schedule the task
-const cronSchedule = process.env.CRON_SCHEDULE;
-if (cron.validate(cronSchedule)) {
-  console.log(`Scheduler started. Waiting for the job to run at: ${cronSchedule}`);
-  cron.schedule(cronSchedule, runCheckIn);
+// Decide whether to run immediately or schedule the task
+if (process.argv.includes('--run')) {
+  console.log('Running check-in process immediately for debugging...');
+  runCheckIn();
 } else {
-  console.error('Invalid CRON schedule in .env file. Please check CRON_SCHEDULE.');
-  process.exit(1);
+  const cronSchedule = process.env.CRON_SCHEDULE;
+  if (cron.validate(cronSchedule)) {
+    console.log(`Scheduler started. Waiting for the job to run at: ${cronSchedule}`);
+    cron.schedule(cronSchedule, runCheckIn);
+  } else {
+    console.error('Invalid CRON schedule in .env file. Please check CRON_SCHEDULE.');
+    process.exit(1);
+  }
 }
